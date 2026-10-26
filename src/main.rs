@@ -5,13 +5,13 @@ async fn main() {
     use leptos::prelude::*;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use postgres_temporal::app::{App, shell};
-    use sqlx::postgres::PgPoolOptions;
+    use sea_orm::{ConnectOptions, Database};
 
     let database_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/postgres".into());
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
+    let mut options = ConnectOptions::new(database_url);
+    options.max_connections(5);
+    let db = Database::connect(options)
         .await
         .expect("failed to connect to Postgres");
 
@@ -25,8 +25,8 @@ async fn main() {
             &leptos_options,
             routes,
             {
-                let pool = pool.clone();
-                move || provide_context(pool.clone())
+                let db = db.clone();
+                move || provide_context(db.clone())
             },
             {
                 let leptos_options = leptos_options.clone();

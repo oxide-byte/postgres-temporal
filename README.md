@@ -90,11 +90,15 @@ like `product_current_price` does for the current price.
 
 ### Application
 
-Leptos full-stack (axum + server functions + `sqlx`):
+Leptos full-stack: axum serves the pages, and server functions query Postgres through
+[SeaORM](https://www.sea-ql.org/SeaORM/). The database code only compiles into the server (`ssr` feature), never into
+the wasm bundle.
 
-- `list_products` fills the dropdown.
+- `list_products` fills the dropdown, using the SeaORM `product` entity (`src/entity.rs`).
 - `price_history(product_id)` returns the rows of `product_price`, ordered by start date, shown in the table.
   An open-ended period displays "now".
+- `product_price` has no SeaORM entity: SeaORM has no `daterange` type, so `price_history` reads it with a raw SQL
+  statement mapped onto `PriceRow`. Dates and prices are cast to text in SQL.
 
 ## Run it
 
@@ -103,6 +107,9 @@ cargo install --locked cargo-leptos   # once
 just db                               # PostgreSQL 19 RC1 on 127.0.0.1:5432, loaded with init.sql
 just serve                            # http://127.0.0.1:3000
 ```
+
+Build and serve with `cargo leptos` (the Justfile does it). `trunk serve` does not work: it builds a browser-only app,
+and this project also has a server binary.
 
 The server reads `DATABASE_URL`, defaulting to `postgres://postgres:password@localhost:5432/postgres`.
 The database container is started with `--rm`, so its data is reset on every `just db`.

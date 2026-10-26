@@ -3,7 +3,6 @@ use leptos_meta::{MetaTags, Title, provide_meta_context};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
 pub struct Product {
     pub id: i64,
     pub sku: String,
@@ -11,7 +10,7 @@ pub struct Product {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[cfg_attr(feature = "ssr", derive(sqlx::FromRow))]
+#[cfg_attr(feature = "ssr", derive(sea_orm::FromQueryResult))]
 pub struct PriceRow {
     pub valid_from: String,
     /// `None` while the price is still open-ended.
@@ -22,17 +21,28 @@ pub struct PriceRow {
 
 #[server]
 pub async fn list_products() -> Result<Vec<Product>, ServerFnError> {
-    let pool = expect_context::<sqlx::PgPool>();
-    sqlx::query_as::<_, Product>("SELECT id, sku, name FROM product ORDER BY name")
-        .fetch_all(&pool)
+    use crate::entity::product;
+    use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+
+    let db = expect_context::<DatabaseConnection>();
+    let rows = product::Entity::find()
+        .order_by_asc(product::Column::Name)
+        .all(&db)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))
+        .map_err(|e| ServerFnError::new(e.to_string()))?;
+    Ok(rows
+        .into_iter()
+        .map(|p| Product { id: p.id, sku: p.sku, name: p.name })
+        .collect())
 }
 
 #[server]
 pub async fn price_history(product_id: i64) -> Result<Vec<PriceRow>, ServerFnError> {
-    let pool = expect_context::<sqlx::PgPool>();
-    sqlx::query_as::<_, PriceRow>(
+    use sea_orm::{DatabaseConnection, DbBackend, FromQueryResult, Statement};
+
+    let db = expect_context::<DatabaseConnection>();
+    PriceRow::find_by_statement(Statement::from_sql_and_values(
+        DbBackend::Postgres,
         "SELECT lower(valid_at)::text AS valid_from,
                 upper(valid_at)::text AS valid_to,
                 price::text           AS price,
@@ -40,9 +50,9 @@ pub async fn price_history(product_id: i64) -> Result<Vec<PriceRow>, ServerFnErr
          FROM product_price
          WHERE product_id = $1
          ORDER BY lower(valid_at)",
-    )
-    .bind(product_id)
-    .fetch_all(&pool)
+        [product_id.into()],
+    ))
+    .all(&db)
     .await
     .map_err(|e| ServerFnError::new(e.to_string()))
 }

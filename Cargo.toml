@@ -13,7 +13,7 @@ leptos_meta = "0.8"
 leptos_axum = { version = "0.8", optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros"], optional = true }
+sea-orm = { version = "2.0", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"], optional = true }
 serde = { version = "1", features = ["derive"] }
 wasm-bindgen = { version = "0.2", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
@@ -26,7 +26,7 @@ ssr = [
     "dep:leptos_axum",
     "dep:axum",
     "dep:tokio",
-    "dep:sqlx",
+    "dep:sea-orm",
 ]
 
 [package.metadata.leptos]
