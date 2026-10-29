@@ -21,10 +21,24 @@ period of time is done by hand (see below).
 PostgreSQL supports *application time*: a column holding the period during which a row is true in the real world.
 System time (when the row was written) is not supported.
 
-### Schema (`infrastructure/init.sql`)
+### Schema (`migration/`)
 
-- `product`: the facts that never change (`sku`, `name`, `brand`, `category`).
-- `product_price`: one row per period during which a product had a given price.
+The schema is an anchor model, created by [SeaORM migrations](https://www.sea-ql.org/SeaORM/docs/migration/setting-up-migration/)
+(`migration/src/`), which the server runs on startup.
+
+- `product`: the anchor, identity only (`id`).
+- `product_sku`, `product_name`, `product_brand`, `product_category`: static attributes, one row per product.
+- `product_price`: the temporal attribute, one row per period during which a product had a given price.
+- `seaql_migrations`: SeaORM's own table, recording which migrations have been applied.
+
+![Database schema](assets/db_schema.png)
+
+Migrations:
+
+- `m20260101_000001_create_anchor_model` creates the anchor and the static attribute tables with the SeaORM schema
+  builder. `product_price`, the `btree_gist` extension and the view are raw SQL, because SeaORM has no `daterange`
+  type nor `WITHOUT OVERLAPS`.
+- `m20260101_000002_seed_products` inserts the sample data.
 
 ```sql
 CREATE TABLE product_price
@@ -43,7 +57,7 @@ CREATE TABLE product_price
 - `PRIMARY KEY (product_id, valid_at WITHOUT OVERLAPS)` means a product may have many rows, but never two prices at the
   same moment. It is backed by a GiST index, which is why the `btree_gist` extension is enabled.
   It also forbids empty ranges.
-- `product_current_price` is a view returning each product's price today (`valid_at @> CURRENT_DATE`).
+- `product_current` is a view joining the anchor, its static attributes and the price valid today (`valid_at @> CURRENT_DATE`).
 
 Query a price at any date:
 
@@ -80,13 +94,12 @@ information can change on its own timeline.
   period, and the value is only true during that period.
 - **Tie:** a table that links anchors, also historizable.
 
-This demo is a partial take on that idea. `product_price` is a historized attribute table, kept apart from the
-`product` identity, so a price change never touches anything else. `name`, `brand` and `category` stay together in
-`product`, so it is not full 6NF. If those had to be versioned too, each would get its own attribute table with its
-own `valid_at` and `WITHOUT OVERLAPS` key.
+This demo follows that idea: `product` is the anchor, each attribute has its own table, and `product_price` is a
+historized attribute, so a price change never touches anything else. `sku`, `name`, `brand` and `category` are static
+here. If they had to be versioned too, each would get its own `valid_at` and `WITHOUT OVERLAPS` key.
 
 The cost of 6NF is more tables and more joins. The usual remedy is a view that joins the attributes back together,
-like `product_current_price` does for the current price.
+like `product_current` does.
 
 ### Application
 
@@ -94,7 +107,7 @@ Leptos full-stack: axum serves the pages, and server functions query Postgres th
 [SeaORM](https://www.sea-ql.org/SeaORM/). The database code only compiles into the server (`ssr` feature), never into
 the wasm bundle.
 
-- `list_products` fills the dropdown, using the SeaORM `product` entity (`src/entity.rs`).
+- `list_products` fills the dropdown, joining the SeaORM `product`, `product_sku` and `product_name` entities (`src/entity.rs`).
 - `price_history(product_id)` returns the rows of `product_price`, ordered by start date, shown in the table.
   An open-ended period displays "now".
 - `product_price` has no SeaORM entity: SeaORM has no `daterange` type, so `price_history` reads it with a raw SQL
@@ -104,12 +117,14 @@ the wasm bundle.
 
 ```
 cargo install --locked cargo-leptos   # once
-just db                               # PostgreSQL 19 RC1 on 127.0.0.1:5432, loaded with init.sql
-just serve                            # http://127.0.0.1:3000
+just db                               # empty PostgreSQL 19 RC1 on 127.0.0.1:5432
+just serve                            # runs the migrations, then serves http://127.0.0.1:3000
 ```
 
 Build and serve with `cargo leptos` (the Justfile does it). `trunk serve` does not work: it builds a browser-only app,
 and this project also has a server binary.
 
 The server reads `DATABASE_URL`, defaulting to `postgres://postgres:password@localhost:5432/postgres`.
-The database container is started with `--rm`, so its data is reset on every `just db`.
+The database container is started with `--rm`, so its data is lost when it stops. If `just db` reports that the
+container name is already in use, the database is already running; to start over, run
+`docker rm -f postgres-temporal-db` first.

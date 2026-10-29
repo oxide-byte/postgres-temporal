@@ -5,6 +5,7 @@ async fn main() {
     use leptos::prelude::*;
     use leptos_axum::{LeptosRoutes, generate_route_list};
     use postgres_temporal::app::{App, shell};
+    use migration::{Migrator, MigratorTrait};
     use sea_orm::{ConnectOptions, Database};
 
     let database_url = std::env::var("DATABASE_URL")
@@ -14,6 +15,7 @@ async fn main() {
     let db = Database::connect(options)
         .await
         .expect("failed to connect to Postgres");
+    Migrator::up(&db, None).await.expect("failed to run migrations");
 
     let conf = get_configuration(None).expect("failed to read leptos configuration");
     let addr = conf.leptos_options.site_addr;

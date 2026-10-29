@@ -3,6 +3,7 @@ use leptos_meta::{MetaTags, Title, provide_meta_context};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "ssr", derive(sea_orm::FromQueryResult))]
 pub struct Product {
     pub id: i64,
     pub sku: String,
@@ -21,19 +22,24 @@ pub struct PriceRow {
 
 #[server]
 pub async fn list_products() -> Result<Vec<Product>, ServerFnError> {
-    use crate::entity::product;
-    use sea_orm::{DatabaseConnection, EntityTrait, QueryOrder};
+    use crate::entity::{product, product_name, product_sku};
+    use sea_orm::{
+        DatabaseConnection, EntityTrait, JoinType, QueryOrder, QuerySelect, RelationTrait,
+    };
 
     let db = expect_context::<DatabaseConnection>();
-    let rows = product::Entity::find()
-        .order_by_asc(product::Column::Name)
+    product::Entity::find()
+        .select_only()
+        .column(product::Column::Id)
+        .column(product_sku::Column::Sku)
+        .column(product_name::Column::Name)
+        .join(JoinType::InnerJoin, product::Relation::Sku.def())
+        .join(JoinType::InnerJoin, product::Relation::Name.def())
+        .order_by_asc(product_name::Column::Name)
+        .into_model::<Product>()
         .all(&db)
         .await
-        .map_err(|e| ServerFnError::new(e.to_string()))?;
-    Ok(rows
-        .into_iter()
-        .map(|p| Product { id: p.id, sku: p.sku, name: p.name })
-        .collect())
+        .map_err(|e| ServerFnError::new(e.to_string()))
 }
 
 #[server]
