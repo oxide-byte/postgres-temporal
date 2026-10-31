@@ -110,8 +110,11 @@ the wasm bundle.
 - `list_products` fills the dropdown, joining the SeaORM `product`, `product_sku` and `product_name` entities (`src/entity.rs`).
 - `price_history(product_id)` returns the rows of `product_price`, ordered by start date, shown in the table.
   An open-ended period displays "now".
-- `product_price` has no SeaORM entity: SeaORM has no `daterange` type, so `price_history` reads it with a raw SQL
-  statement mapped onto `PriceRow`. Dates and prices are cast to text in SQL.
+- A date picker beside the table shows the price valid on the selected date. PostgreSQL computes the result with
+  `valid_at @> $2::date`; period starts are included and ends excluded, and dates with no matching period display a
+  no-price message.
+- `product_price` has no SeaORM entity: SeaORM has no `daterange` type, so `price_history` and `price_on_date` read it
+  with raw SQL statements mapped onto `PriceRow` and `PriceQuote`. Dates and prices are cast to text in SQL.
 
 ## Run it
 
@@ -119,6 +122,16 @@ the wasm bundle.
 cargo install --locked cargo-leptos   # once
 just db                               # empty PostgreSQL 19 RC1 on 127.0.0.1:5432
 just serve                            # runs the migrations, then serves http://127.0.0.1:3000
+```
+
+The server does not automatically choose another port. If startup reports that port 3000 is already in use, inspect
+the listener with `lsof -nP -iTCP:3000 -sTCP:LISTEN`. After confirming that you recognize and own the process, run
+`just kill` to send it SIGTERM; specify another port with `just kill 3100`. The command only targets TCP listeners,
+and can stop multiple processes if they share the port. A running `cargo leptos watch` may restart its server, so stop
+the watcher separately if needed. To run a second development instance, give it a separate site address and reload port:
+
+```sh
+LEPTOS_SITE_ADDR=127.0.0.1:3001 LEPTOS_RELOAD_PORT=3002 just serve
 ```
 
 Build and serve with `cargo leptos` (the Justfile does it). `trunk serve` does not work: it builds a browser-only app,
